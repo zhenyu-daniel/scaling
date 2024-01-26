@@ -1,0 +1,6 @@
+numpy==1.21.6
+torch
+torchmetrics
+matplotlib==3.6.1
+horovod
+unittest2==1.1.0

@@ -1,0 +1,21 @@
+name: scaling
+channels:
+  - apple
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python
+  - pip
+  - tensorflow-deps
+  - bokeh
+  - jupyterlab
+  - pytorch
+  - tensorboard
+  - tensorflow
+  - torchvision
+
+  ## PyPI packages
+  - pip:
+    - tensorflow-macos
+    - tensorflow-metal
