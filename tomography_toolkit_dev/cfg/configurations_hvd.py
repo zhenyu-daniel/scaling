@@ -6,7 +6,7 @@ training_config = {
     "num_epochs":100000,
     "num_backward_passes": 5,
     "num_events_per_parameter_set":100, #--> Number of events to generate per parameter set during training
-    "print_info_epoch": 10000, #--> When to print the loss and accuracy values (here: every 10000 epochs, a result is printed)
+    "print_info_epoch": 1, #--> When to print the loss and accuracy values (here: every 10000 epochs, a result is printed)
     "read_performance_epoch": 500, #--> When to record performance metrics, such as loss and accuracy (here: every 1000 epochs, the loss and accuracy are recorded)
     "n_final_analysis_samples": 50000, #--> How many events to generate for the final analysis (i.e. residuals, pdfs, etc.)
     "snapshot_epoch": 5000, #--> Set this to a value > 0, if you want to take a snaphot of the parameter and residual evolution (e.g. 10 would mean, that every 10 epochs a snapshot is taken)
