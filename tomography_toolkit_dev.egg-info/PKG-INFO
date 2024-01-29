@@ -4,9 +4,3 @@ Version: 0.1
 Summary: Development package for QuantOm collaboration
 Author: Kishansingh Rajput, and others...
 Author-email: kishan@jlab.org
-Requires-Dist: numpy==1.21.6
-Requires-Dist: torch
-Requires-Dist: torchmetrics
-Requires-Dist: matplotlib==3.6.1
-Requires-Dist: horovod
-Requires-Dist: unittest2==1.1.0
