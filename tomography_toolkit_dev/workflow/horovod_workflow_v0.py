@@ -190,8 +190,13 @@ class hvd_workflow(Workflow):
         # Name of this workflow
         self.name = "horovod_workflow_v0"
 
+        # set ranks based on hvd.size()
+        self.g_set = [i for i in range(torch.cuda.device_count()-1)]
+        self.g_set = hvd.ProcessSet(self.g_set)
+        self.d_set = [torch.cuda.device_count()-1]
+        self.d_set = hvd.ProcessSet(self.d_set)
         # Initialize horovod:
-        hvd.init()
+        hvd.init(process_sets=[self.g_set, self.d_set])
 
         # Set the seed (if specified)
         if self.seed > 0:
@@ -479,18 +484,20 @@ class hvd_workflow(Workflow):
         generator_optimizer = hvd.DistributedOptimizer(
             torch.optim.Adam(self.generator.parameters(), lr=self.generator_lr * self.n_workers, betas=(0.5, 0.999)),
             backward_passes_per_step=self.num_backward_passes,
-            named_parameters=self.generator.named_parameters())
+            named_parameters=self.generator.named_parameters(),
+            process_set=self.g_set)
 
         discriminator_optimizer = hvd.DistributedOptimizer(
             torch.optim.Adam(self.discriminator.parameters(), lr=self.discriminator_lr * 1, #self.n_workers,
                              betas=(0.5, 0.999)),
             backward_passes_per_step=1, #self.num_backward_passes,
-            named_parameters=self.discriminator.named_parameters()
+            named_parameters=self.discriminator.named_parameters(),
+            process_set=self.d_set
         )
 
         # Broadcast the parameters from each network:
-        hvd.broadcast_parameters(self.generator.state_dict(), root_rank=0)
-        #hvd.broadcast_parameters(self.discriminator.state_dict(), root_rank=0)
+        hvd.broadcast_parameters(self.generator.state_dict(), root_rank=self.g_set[0])
+        hvd.broadcast_parameters(self.discriminator.state_dict(), root_rank=self.d_set[0])
 
         # Set up a performance monitor for each worker:
         self.hvd_performance_monitor = GAN_Performance_Monitor(
@@ -544,7 +551,7 @@ class hvd_workflow(Workflow):
                 generator_optimizer.synchronize()
                 g_losses = self.generator.train(noise, self.norms, generator_optimizer)
 
-                #discriminator_optimizer.synchronize()
+                discriminator_optimizer.synchronize()
 
                 t_end = time.time()
                 dt = t_end - t_start
@@ -616,7 +623,7 @@ class hvd_workflow(Workflow):
         loss_accuracy_dict = self.hvd_performance_monitor.read_out_losses_and_accuracy()
 
         # Accumulated losses:
-        self.hvd_disc_real_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_loss']), 'disc_real_loss')
+        self.hvd_disc_real_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_loss']), 'disc_real_loss',)
         self.hvd_disc_fake_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_fake_loss']), 'disc_fake_loss')
         self.hvd_gen_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['gen_loss']), 'gen_loss')
 
