@@ -482,7 +482,7 @@ class hvd_workflow(Workflow):
     def fit(self):
         # Set up optimizers for each network:
         generator_optimizer = hvd.DistributedOptimizer(
-            torch.optim.Adam(self.generator.parameters(), lr=self.generator_lr * self.n_workers, betas=(0.5, 0.999)),
+            torch.optim.Adam(self.generator.parameters(), lr=self.generator_lr * self.n_workers-1, betas=(0.5, 0.999)),
             backward_passes_per_step=self.num_backward_passes,
             named_parameters=self.generator.named_parameters(),
             process_set=self.g_set)
