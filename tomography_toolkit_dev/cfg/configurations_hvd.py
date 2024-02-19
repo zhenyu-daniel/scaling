@@ -2,14 +2,14 @@ import os
 this_file_path = os.path.dirname(__file__)
 
 training_config = {
-    "batch_size":512,
+    "batch_size":1024,
     "num_epochs":100000,
     "num_backward_passes": 5,
     "num_events_per_parameter_set":100, #--> Number of events to generate per parameter set during training
-    "print_info_epoch": 1, #--> When to print the loss and accuracy values (here: every 10000 epochs, a result is printed)
+    "print_info_epoch": 500, #--> When to print the loss and accuracy values (here: every 10000 epochs, a result is printed)
     "read_performance_epoch": 500, #--> When to record performance metrics, such as loss and accuracy (here: every 1000 epochs, the loss and accuracy are recorded)
     "n_final_analysis_samples": 50000, #--> How many events to generate for the final analysis (i.e. residuals, pdfs, etc.)
-    "snapshot_epoch": 5000, #--> Set this to a value > 0, if you want to take a snaphot of the parameter and residual evolution (e.g. 10 would mean, that every 10 epochs a snapshot is taken)
+    "snapshot_epoch": 500, #--> Set this to a value > 0, if you want to take a snaphot of the parameter and residual evolution (e.g. 10 would mean, that every 10 epochs a snapshot is taken)
     "n_snapshot_samples": 5000, #--> How many events to generate for the snapshot evaluation. This setting has only impact, if snapshot_epoch > 0
     "do_test_run": True, #--> Run one iteration in the workflow WITHOUT parameter update. This might help to diagnose the model a bit more...
     "noise_mean":0.0,
@@ -57,7 +57,7 @@ theory_config = {
 
 module_names = {
     "generator": "torch_mlp_generator_hvd",
-    "discriminator": "torch_mlp_discriminator_hvd",
+    "discriminator": "torch_mlp_discriminator_v0",
     "theory": "torch_proxy_theory_v0",
     "data_parser": "numpy_data_parser",
     "experiment": "simple_det", #--> Simplified detector

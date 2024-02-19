@@ -102,7 +102,7 @@ class hvd_workflow(Workflow):
         self.num_backward_passes = workflow_args.num_backward_passes
         self.batch_size = workflow_args.batch_size
         self.n_events_to_analyze = workflow_args.n_events_to_analyze
-        self.do_test_run = self.read_settings_from_config("do_test_run",training_config,False)
+        self.do_test_run = self.read_settings_from_config("do_test_run",training_config,True)
         self.num_epochs = workflow_args.num_epochs
         self.print_info_epoch = workflow_args.print_info_epoch
         self.read_performance_epoch = workflow_args.read_performance_epoch
@@ -130,7 +130,7 @@ class hvd_workflow(Workflow):
         # Decide if and where to store results / information:
         self.output_loc = workflow_args.output_loc
         self.result_folder = workflow_args.result_folder
-        self.store_results_as_npy = self.read_settings_from_config("store_results_as_npy",training_config,False)
+        self.store_results_as_npy = self.read_settings_from_config("store_results_as_npy",training_config,True)
         self.write_cfg_to_json = self.read_settings_from_config("write_cfg_to_json",training_config,False)
         self.write_cfg_to_py = self.read_settings_from_config("write_cfg_to_py",training_config,False)
         self.get_software_info = self.read_settings_from_config("get_software_info",training_config,False)
@@ -422,7 +422,8 @@ class hvd_workflow(Workflow):
         #hvd.broadcast_parameters(self.discriminator.state_dict(), root_rank=0)
 
         # Set up a performance monitor for each worker:
-        self.hvd_performance_monitor = GAN_Performance_Monitor(
+        if hvd.rank() == 0:
+            self.hvd_performance_monitor = GAN_Performance_Monitor(
             generator=self.generator, #--> Generator network
             discriminator=self.discriminator, #--> Discriminator network
             data_pipeline=self.analysis_pipeline, #--> Analysis pipeline which translates params to events
@@ -432,7 +433,7 @@ class hvd_workflow(Workflow):
             disc_loss_fn_str=self.disc_loss_fn, #--> String for the discriminator loss (allowed values are: "mse", "mae" and "bce")
             gen_loss_fn_str=self.gen_loss_fn, #--> String for the generator loss (allowed values are: "mse", "mae" and "bce")
             device=self.devices #--> CPU vs GPU
-        )
+            )
 
         # Get the training time:
         training_time = []
@@ -478,12 +479,13 @@ class hvd_workflow(Workflow):
                # >>> Monitor losses, accuracy and gradients: <<<  
                #----------------------------------------------------
                # We set up a monitor for each process because we wish to collect the losses / accuracy for every worker / process
-               self.hvd_performance_monitor.watch_losses_and_accuracy_per_batch(
-                  real_data=real_events,
-                  fake_data=fake_events,
-                  gen_loss=g_losses[0],
-                  disc_real_loss=d_losses[0],
-                  disc_fake_loss=d_losses[1])
+               if hvd.rank()==0:
+                  self.hvd_performance_monitor.watch_losses_and_accuracy_per_batch(
+				real_data=real_events,
+				fake_data=fake_events,
+				gen_loss=g_losses[0],
+				disc_real_loss=d_losses[0],
+				disc_fake_loss=d_losses[1])
             
 
                # Get the gradients of the current model(s)
@@ -492,7 +494,7 @@ class hvd_workflow(Workflow):
                   self.gen_grad_mon.watch_gradients_per_batch(sample_size=self.read_performance_epoch)
             
                # Read out the accumulated metrics / information:
-               if epoch % self.read_performance_epoch == 0:
+               if (epoch % self.read_performance_epoch == 0 or epoch==1) and hvd.rank()==0:
                   self.hvd_performance_monitor.collect_losses_and_accuracy_per_epoch()
                   training_time.append(dt)
 
@@ -503,7 +505,7 @@ class hvd_workflow(Workflow):
 
             # >>> Print out some basic information: <<<
             #----------------------------------------------------
-            if epoch % self.print_info_epoch == 0 and hvd.rank() == 0:
+            if (epoch % self.print_info_epoch == 0) and hvd.rank() == 0:
                
                 print(" ")
                 print("Epoch: " + str(epoch) + "/" + str(self.num_epochs))
@@ -513,7 +515,7 @@ class hvd_workflow(Workflow):
 
             # >>> Take a snapshot of the current model: <<<
             #----------------------------------------------------
-            if self.snapshot_epoch > 0 and epoch % self.snapshot_epoch == 0 and hvd.rank() == 0:
+            if self.snapshot_epoch > 0 and (epoch % self.snapshot_epoch == 0) and hvd.rank() == 0:
                 epoch_str = str(epoch) + 'epochs'
                 epoch_str = epoch_str.zfill(6 + len(str(self.num_epochs)))
 
@@ -542,32 +544,32 @@ class hvd_workflow(Workflow):
             # torch.save(self.discriminator.state_dict(),self.model_dir+'/discriminator_'+epoch_str+'.pt')
 
         # Now we need to 'collect' the results from the performance & gradient monitor:
-        loss_accuracy_dict = self.hvd_performance_monitor.read_out_losses_and_accuracy()
+            loss_accuracy_dict = self.hvd_performance_monitor.read_out_losses_and_accuracy()
 
         # Accumulated losses:
-        self.hvd_disc_real_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_loss']),'disc_real_loss') 
-        self.hvd_disc_fake_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_fake_loss']),'disc_fake_loss') 
-        self.hvd_gen_loss = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['gen_loss']),'gen_loss')
+            self.hvd_disc_real_loss = torch.as_tensor(loss_accuracy_dict['disc_real_loss'])# hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_loss']),'disc_real_loss') 
+            self.hvd_disc_fake_loss = torch.as_tensor(loss_accuracy_dict['disc_fake_loss'])#hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_fake_loss']),'disc_fake_loss') 
+            self.hvd_gen_loss = torch.as_tensor(loss_accuracy_dict['gen_loss'])#hvd.allreduce(torch.as_tensor(loss_accuracy_dict['gen_loss']),'gen_loss')
 
         # Accumulated accuracies:
-        self.hvd_real_acc = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_acc']),'disc_real_acc')
-        self.hvd_fake_acc = hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_fake_acc']),'disc_fake_acc')
+            self.hvd_real_acc = torch.as_tensor(loss_accuracy_dict['disc_real_acc'])#hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_real_acc']),'disc_real_acc')
+            self.hvd_fake_acc = torch.as_tensor(loss_accuracy_dict['disc_fake_acc'])#hvd.allreduce(torch.as_tensor(loss_accuracy_dict['disc_fake_acc']),'disc_fake_acc')
 
         # Handle times:
-        self.hvd_training_time = hvd.allreduce(torch.as_tensor(training_time),'avg_training_time')
+            self.hvd_training_time = torch.as_tensor(training_time)#hvd.allreduce(torch.as_tensor(training_time),'avg_training_time')
 
         # Get the gradients:
-        if self.watch_gradients == True:
-            disc_gradients = self.disc_grad_mon.read_out_gradients()
-            gen_gradients = self.gen_grad_mon.read_out_gradients()
+       # if self.watch_gradients == True:
+           # disc_gradients = self.disc_grad_mon.read_out_gradients()
+           # gen_gradients = self.gen_grad_mon.read_out_gradients()
             
-            self.hvd_disc_min_grad = hvd.allreduce(torch.as_tensor(disc_gradients['minimum_gradients']),'disc_min_grad')
-            self.hvd_disc_max_grad = hvd.allreduce(torch.as_tensor(disc_gradients['maximum_gradients']),'disc_max_grad')
-            self.hvd_disc_avg_grad = hvd.allreduce(torch.as_tensor(disc_gradients['average_gradients']),'disc_avg_grad')
+           # self.hvd_disc_min_grad = hvd.allreduce(torch.as_tensor(disc_gradients['minimum_gradients']),'disc_min_grad')
+           # self.hvd_disc_max_grad = hvd.allreduce(torch.as_tensor(disc_gradients['maximum_gradients']),'disc_max_grad')
+           # self.hvd_disc_avg_grad = hvd.allreduce(torch.as_tensor(disc_gradients['average_gradients']),'disc_avg_grad')
 
-            self.hvd_gen_min_grad = hvd.allreduce(torch.as_tensor(gen_gradients['minimum_gradients']),'gen_min_grad')
-            self.hvd_gen_max_grad = hvd.allreduce(torch.as_tensor(gen_gradients['maximum_gradients']),'gen_max_grad')
-            self.hvd_gen_avg_grad = hvd.allreduce(torch.as_tensor(gen_gradients['average_gradients']),'gen_avg_grad')
+           # self.hvd_gen_min_grad = hvd.allreduce(torch.as_tensor(gen_gradients['minimum_gradients']),'gen_min_grad')
+           # self.hvd_gen_max_grad = hvd.allreduce(torch.as_tensor(gen_gradients['maximum_gradients']),'gen_max_grad')
+           # self.hvd_gen_avg_grad = hvd.allreduce(torch.as_tensor(gen_gradients['average_gradients']),'gen_avg_grad')
     #*****************************************************
 
     # VISUALIZE AND STORE THE RESULTS
